@@ -2,42 +2,36 @@
 
 // Variable to hold the media stream (audio and video) from the user's device.
 let localStream;
+let localPeerConnection;
 
 // Function to request access to the user's camera and microphone.
 export const setupDevice = () => {
-    console.log('setupDevice invoked'); // Log function invocation for debugging purposes
+    console.log('2. setupDevice function invoked'); // Log function invocation for debugging purposes
 
-    // Using the deprecated navigator.getUserMedia for accessing media devices
-    navigator.getUserMedia({ audio: true, video: true }, (stream) => {
-        // Render local stream on DOM
-        const localPlayer = document.getElementById('localPlayer'); // Get the video element by its ID
-        localPlayer.srcObject = stream; // Set the video element's source to the local stream
-        localStream = stream; // Store the local stream in the global variable
-    }, (error) => {
-        console.error('getUserMedia error:', error); // Log any errors that occur
-    });
+    // Media constraints object specifies the desired properties of the media stream
+    const constraints = {
+        video: {
+            width: { ideal: 1280 }, // Desired width in pixels
+            height: { ideal: 720 }, // Desired height in pixels
+            frameRate: { ideal: 30 }, // Desired frame rate in frames per second
+        },
+        audio: true, // Request audio
+    };
+
+    // request access to the user's media devices using promises
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then((stream) => {
+            // Render local stream on DOM
+            const localPlayer = document.getElementById('localPlayer'); // Get the video element by its ID
+            localPlayer.srcObject = stream; // Set the video element's source to the local stream
+            localStream = stream; // Store the local stream in the global variable
+
+            console.log('3. Media stream acquired:', stream); // Log the acquired stream
+        })
+        .catch((error) => {
+            console.error('getUserMedia error:', error); // Log any errors that occur
+        });
 };
-
-// Media constraints object specifies the desired properties of the media stream
-const constraints = {
-    video: {
-        width: { ideal: 1280 }, // Desired width in pixels
-        height: { ideal: 720 }, // Desired height in pixels
-        frameRate: { ideal: 30 }, // Desired frame rate in frames per second
-    },
-    audio: true, // Request audio
-};
-
-// Modern way to request access to the user's media devices using promises
-navigator.mediaDevices.getUserMedia(constraints)
-    .then((stream) => {
-        // Handle the media stream as needed
-        console.log('Media stream acquired:', stream);
-    })
-    .catch((error) => {
-        // Handle the error if constraints cannot be satisfied
-        console.error('getUserMedia error:', error);
-    });
 
 // ******** Step 2: Establishing the RTCPeerConnection. ********
 
@@ -56,48 +50,52 @@ const pcConstraints = {
 };
 
 // When the user clicks the call button, create the peer-to-peer connection
- export const callOnClick = () => {
-    console.log('callOnClick invoked'); // Log function invocation for debugging purposes
+ export const callOnClick = (userId, channelName, ws) => {
+    console.log('4. callOnClick invoked'); // Log function invocation for debugging purposes
 
     // Check if there are video tracks in the local stream
     if (localStream.getVideoTracks().length > 0) {
-        console.log(`Using video device: ${localStream.getVideoTracks()[0].label}`); // Log the video device label
+        console.log(`5. Using video device: ${localStream.getVideoTracks()[0].label}`); // Log the video device label
     }
 
     // Check if there are audio tracks in the local stream
     if (localStream.getAudioTracks().length > 0) {
-        console.log(`Using audio device: ${localStream.getAudioTracks()[0].label}`); // Log the audio device label
+        console.log(`6. Using audio device: ${localStream.getAudioTracks()[0].label}`); // Log the audio device label
     }
 
     // Create a new RTCPeerConnection with the specified servers and constraints
     localPeerConnection = new RTCPeerConnection(servers, pcConstraints);
     
     // Set up event handlers for ICE candidates and stream addition
-    localPeerConnection.onicecandidate = gotLocalIceCandidateOffer;
+    localPeerConnection.onicecandidate = (event) => gotLocalIceCandidateOffer(event, userId, channelName, ws);
     localPeerConnection.onaddstream = gotRemoteStream;
 
     // Add the local stream to the peer connection
     localPeerConnection.addStream(localStream);
 
     // Create an offer SDP (Session Description Protocol) to initiate the connection
-    localPeerConnection.createOffer().then(gotLocalDescription);
+
+    localPeerConnection.createOffer()
+        .then((offer) => gotLocalDescription(offer, ws, channelName, userId))
+        .catch((error) => console.error('Error creating offer:', error));
 };
 
 // Function to handle the local SDP (offer) generated by the createOffer method
-const gotLocalDescription = (offer) => {
+const gotLocalDescription = (offer, ws, channelName, userId) => {
     console.log('gotLocalDescription invoked:', offer); // Log the generated offer SDP
     localPeerConnection.setLocalDescription(offer); // Set the local description for the peer connection
+    sendWsMessage('send_offer', { channelName, userId, sdp: offer }, ws);
 };
 
 // Function to handle the remote stream when it's received
 const gotRemoteStream = (event) => {
-    console.log('gotRemoteStream invoked'); // Log function invocation for debugging purposes
+    console.log('gotRemoteStream invoked', event.stream); // Log function invocation for debugging purposes
     const remotePlayer = document.getElementById('peerPlayer'); // Get the remote video element by its ID
     remotePlayer.srcObject = event.stream; // Set the remote video element's source to the received stream
 };
 
 // Function to handle ICE candidates
-const gotLocalIceCandidateOffer = (event) => {
+const gotLocalIceCandidateOffer = (event, userId, channelName, ws) => {
     console.log('gotLocalIceCandidateOffer invoked', event.candidate, localPeerConnection.localDescription); // Log the ICE candidate event
 
     // Check if the ICE candidate gathering is complete
@@ -109,39 +107,26 @@ const gotLocalIceCandidateOffer = (event) => {
             channelName, // Channel name for the signaling server
             userId, // User ID for the signaling server
             sdp: offer, // The SDP offer to be sent
-        });
+        }, ws);
     }
 };
-
-// ?
-// Placeholder function for sending WebSocket messages (implementation required)
-// const sendWsMessage = (type, payload) => {
-//     // Implement your WebSocket message sending logic here
-//     console.log(`Sending WebSocket message: ${type}`, payload); // Log the message being sent
-// };
 
 // Placeholder variables for signaling (these should be set appropriately in your application)
 const channelName = 'testChannel';
 const userId = '123456';
 
-export const onAnswer = (offer) => {
-    console.log('onAnswer invoked');
-    setCallButtonDisabled(true);
-    setHangupButtonDisabled(false);
+export const onAnswer = (message) => {
+    console.log('onAnswer invoked with message ', message);
+    const answer = message.sdp; // Ensure correct access to the SDP data
 
-    if (localStream.getVideoTracks().length > 0) {
-        console.log(`Using video device: ${localStream.getVideoTracks()[0].label}`);
-    }
-    if (localStream.getAudioTracks().length > 0) {
-        console.log(`Using audio device: ${localStream.getAudioTracks()[0].label}`);
-    }
+    // Create a new RTCSessionDescription object with the offer
+    const rtcSessionDescription = new RTCSessionDescription(offer);
 
-    localPeerConnection = new RTCPeerConnection(servers, pcConstraints);
-    localPeerConnection.onicecandidate = gotLocalIceCandidateAnswer;
-    localPeerConnection.onaddstream = gotRemoteStream; // Use the existing gotRemoteStream function here
-    localPeerConnection.addStream(localStream);
-    localPeerConnection.setRemoteDescription(offer);
-    localPeerConnection.createAnswer().then(gotAnswerDescription);
+    // Set the remote description using the RTCSessionDescription object
+    localPeerConnection.setRemoteDescription(new rtcSessionDescription(answer))
+        .then(() => localPeerConnection.createAnswer())
+        .then((answer) => gotAnswerDescription(answer))
+        .catch((error) => console.error('Error setting remote description or creating answer:', error));
 };
 
 const gotAnswerDescription = (answer) => {
@@ -149,7 +134,7 @@ const gotAnswerDescription = (answer) => {
     localPeerConnection.setLocalDescription(answer);
 };
 
-const gotLocalIceCandidateAnswer = (event) => {
+const gotLocalIceCandidateAnswer = (event, userId, channelName, ws) => {
     console.log('gotLocalIceCandidateAnswer invoked', event.candidate, localPeerConnection.localDescription);
     // gathering candidate finished, send complete sdp
     if (!event.candidate) {
@@ -158,13 +143,13 @@ const gotLocalIceCandidateAnswer = (event) => {
             channelName,
             userId,
             sdp: answer,
-        });
+        }, ws);
      }
  };
 
- export const sendWsMessage = (type, body) => {
+ export const sendWsMessage = (type, body, ws) => {
     console.log('sendWsMessage invoked', type, body);
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type, body }));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type, body }));
     }
 };

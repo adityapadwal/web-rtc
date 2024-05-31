@@ -12,4 +12,5 @@ wss.init(WSSPORT);
 // init the http server on 4000
 server.listen(HTTPPORT, () => {
   debug(`${process.env.APPNAME} is running on port: ${HTTPPORT}`);
+  console.log("HTTP server running successfully on port 4000");
 });

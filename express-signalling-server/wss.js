@@ -5,9 +5,13 @@ let channels = {};
 
 function init(port) {
     debug('ws init invoked, port:', port);
+    console.log("WS server running successfully on port 8090");
+    
     const wss = new WebSocket.Server({ port });
+    
     wss.on('connection', (socket) => {
         debug('A client has connected!');
+        console.log("A client has connected");
         
         socket.on('error', debug);
         socket.on('message', message => onMessage(wss, socket, message));
@@ -37,12 +41,29 @@ function clearClient(wss, socket) {
 function onMessage(wss, socket, message) {
     debug(`onMessage ${message}`);
     const parsedMessage = JSON.parse(message);
-    const type = parsedMessage.type;
-    const body = parsedMessage.body;
-    const channelName = body.channelName;
-    const userId = body.userId;
+    const { type, body } = parsedMessage;
+    const { channelName, userId } = body;
 
-    // Your message handling logic here
+    switch (type) {
+        case 'send_offer':
+            if (!channels[channelName]) channels[channelName] = {};
+            channels[channelName][userId] = socket;
+            broadcastToChannel(channelName, 'offer_sdp_received', body);
+            break;
+        case 'send_answer':
+            broadcastToChannel(channelName, 'answer_sdp_received', body);
+            break;
+        default:
+            debug('Unhandled message type:', type);
+            break;
+    }
+}
+
+function broadcastToChannel(channelName, type, body) {
+    if (!channels[channelName]) return;
+    Object.values(channels[channelName]).forEach(socket => {
+        send(socket, type, body);
+    });
 }
 
 function onClose(wss, socket, message) {
