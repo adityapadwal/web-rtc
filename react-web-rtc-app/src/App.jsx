@@ -1,14 +1,12 @@
-import { Button, Typography, Input } from 'antd';
+import React, { useEffect, useRef } from 'react';
 
+import { Button, Typography, Input } from 'antd';
 const { Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 import { sendWsMessage, setupDevice, callOnClick, onAnswer } from './HelperFunctions/RTCConnections';
 
 const URL_WEB_SOCKET = 'ws://localhost:8090/ws';
-
-import React, {useRef} from 'react';
-import {useEffect} from 'react';
 
 function App() {
     const ws = useRef(null);
@@ -18,7 +16,6 @@ function App() {
             console.log('ws opened');
             ws.current = wsClient;
             // setup camera and join channel after ws opened
-            // join();
             setupDevice();
         };
         wsClient.onclose = () => console.log('ws closed');
@@ -26,31 +23,31 @@ function App() {
             console.log('ws message received', message.data);
             const parsedMessage = JSON.parse(message.data);
             switch (parsedMessage.type) {
-            case 'joined': {
-                const body = parsedMessage.body;
-                console.log('users in this channel', body);
-                break;
-            }
-            case 'offer_sdp_received': {
-                const offer = parsedMessage.body;
-                onAnswer(offer);
-                break;
-            }
-            case 'answer_sdp_received': {
-                gotRemoteDescription(parsedMessage.body);
-                break;
-            }
-            case 'quit': {
-                break;
-            }
-            default:
-                break;
+                case 'joined': {
+                    const body = parsedMessage.body;
+                    console.log('users in this channel', body);
+                    break;
+                }
+                case 'offer_sdp_received': {
+                    const offer = parsedMessage.body;
+                    onAnswer(offer);
+                    break;
+                }
+                case 'answer_sdp_received': {
+                    gotRemoteDescription(parsedMessage.body);
+                    break;
+                }
+                case 'quit': {
+                    break;
+                }
+                default:
+                    break;
             }
         };
         return () => {
             wsClient.close();
         };
-        
+
     }, []);
 
     const sendWsMessage = (type, body) => {
@@ -105,7 +102,7 @@ function App() {
                 <Button
                     style={{ width: 240, marginTop: 16 }}
                     type="primary"
-                    // disabled={sendButtonDisabled}
+                // disabled={sendButtonDisabled}
                 >
                     Send Message
                 </Button>
